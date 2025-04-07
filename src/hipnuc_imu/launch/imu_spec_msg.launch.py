@@ -11,18 +11,14 @@ def generate_launch_description():
         'hipnuc_config.yaml',
     ),
 
-    return LaunchDescription([
-         Node(
-            package='hipnuc_imu',
-            executable='talker',
-            name='IMU_publisher',
-            parameters=[config],
-            output='screen',
+    return LaunchDescription(
+        [
+            Node(
+                package="hipnuc_imu",
+                executable="talker",
+                name="IMU_publisher",
+                parameters=[config],
+                output="screen",
             ),
-        # Node(
-        #     package='hipnuc_imu',
-        #     executable='listener',
-        #     output='screen'
-        #     ),
-        ])
-
+        ]
+    )

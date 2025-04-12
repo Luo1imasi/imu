@@ -16,7 +16,7 @@ extern "C"{
 
 #define GRA_ACC     (9.8)
 #define DEG_TO_RAD  (0.01745329)
-#define BUF_SIZE    (1024)
+#define BUF_SIZE (76)
 #ifdef __cplusplus
 }
 #endif
@@ -125,59 +125,55 @@ class IMUPublisher : public rclcpp::Node
     		    // Update total bytes read
     		    total_read += ret;
     		}
-			
-			for(int i = 0; i < total_read; i++)
-			{
-				if(hipnuc_input(&raw, buf[i])){
-					imu_data.orientation.w = raw.hi91.quat[0];
-					imu_data.orientation.x = raw.hi91.quat[1];	
-					imu_data.orientation.y = raw.hi91.quat[2];
-					imu_data.orientation.z = raw.hi91.quat[3];
-					imu_data.angular_velocity.x = raw.hi91.gyr[0] * DEG_TO_RAD;
-					imu_data.angular_velocity.y = raw.hi91.gyr[1] * DEG_TO_RAD;
-					imu_data.angular_velocity.z = raw.hi91.gyr[2] * DEG_TO_RAD;
-					imu_data.linear_acceleration.x = raw.hi91.acc[0] * GRA_ACC;
-					imu_data.linear_acceleration.y = raw.hi91.acc[1] * GRA_ACC;
-					imu_data.linear_acceleration.z = raw.hi91.acc[2] * GRA_ACC;
+            for (int i = 0; i < total_read; i++) {
+                if (hipnuc_input(&raw, buf[i])) {
+                    imu_data.orientation.w = raw.hi91.quat[0];
+                    imu_data.orientation.x = raw.hi91.quat[1];
+                    imu_data.orientation.y = raw.hi91.quat[2];
+                    imu_data.orientation.z = raw.hi91.quat[3];
+                    imu_data.angular_velocity.x = raw.hi91.gyr[0] * DEG_TO_RAD;
+                    imu_data.angular_velocity.y = raw.hi91.gyr[1] * DEG_TO_RAD;
+                    imu_data.angular_velocity.z = raw.hi91.gyr[2] * DEG_TO_RAD;
+                    imu_data.linear_acceleration.x = raw.hi91.acc[0] * GRA_ACC;
+                    imu_data.linear_acceleration.y = raw.hi91.acc[1] * GRA_ACC;
+                    imu_data.linear_acceleration.z = raw.hi91.acc[2] * GRA_ACC;
 
-					imu_data.header.stamp = rclcpp::Clock().now();
-					
-					imu_pub->publish(imu_data);
-				}
-			}
-			memset(buf,0,sizeof(buf));
-		}
+                    imu_data.header.stamp = rclcpp::Clock().now();
 
-		int open_serial(std::string port, int baud)
-		{
-			const char* port_device = port.c_str();
-			int fd = open(port_device, O_RDWR | O_NOCTTY | O_NDELAY);
-		
-			if(fd == -1)
-			{
-				perror("unable to open serial port");
-				exit(0);
-			}
+                    imu_pub->publish(imu_data);
+                }
+            }
+            memset(buf, 0, sizeof(buf));
+        }
 
-			struct termios options;
-			memset(&options, 0, sizeof(options));
-			tcgetattr(fd, &options);
-	
-			// Set baud rate
-    		speed_t baud_constant = B0;
-    		for (int i = 0; baud_map[i].rate != 0; i++) {
-    		    if (baud_map[i].rate == baud) {
-    		        baud_constant = baud_map[i].constant;
+        int open_serial(std::string port, int baud) {
+            const char* port_device = port.c_str();
+            int fd = open(port_device, O_RDWR | O_NOCTTY | O_NDELAY);
+
+            if (fd == -1) {
+                perror("unable to open serial port");
+                exit(0);
+            }
+
+            struct termios options;
+            memset(&options, 0, sizeof(options));
+            tcgetattr(fd, &options);
+
+            // Set baud rate
+            speed_t baud_constant = B0;
+            for (int i = 0; baud_map[i].rate != 0; i++) {
+                if (baud_map[i].rate == baud) {
+                    baud_constant = baud_map[i].constant;
     		        break;
-    		    }
-    		}
+                }
+            }
 
-    		if (baud_constant == B0) {
-    		    fprintf(stderr, "Unsupported baud rate: %d\n", baud);
+            if (baud_constant == B0) {
+                fprintf(stderr, "Unsupported baud rate: %d\n", baud);
     		    return -1;
-    		}
+            }
 
-    		if (cfsetispeed(&options, baud_constant) < 0 || 
+            if (cfsetispeed(&options, baud_constant) < 0 || 
     		    cfsetospeed(&options, baud_constant) < 0) {
     		    perror("Error setting baud rate");
     		    return -1;
@@ -215,15 +211,14 @@ class IMUPublisher : public rclcpp::Node
     		tcflush(fd, TCIOFLUSH);
 
 			return fd;
-		}
+        }
 
-
-		std::string serial_port;
-		int baud_rate;
-		std::string frame_id;
-		std::string imu_topic;
-		sensor_msgs::msg::Imu imu_data = sensor_msgs::msg::Imu();
-		rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub;
+        std::string serial_port;
+        int baud_rate;
+        std::string frame_id;
+        std::string imu_topic;
+        sensor_msgs::msg::Imu imu_data = sensor_msgs::msg::Imu();
+        rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub;
 };
 
 

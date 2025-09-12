@@ -34,13 +34,13 @@ static const struct {
     {0, B0}  // Sentinel
 };
 
-class IMUPublisher : public rclcpp::Node
+class IMUNode : public rclcpp::Node
 {
 	public:
 		int fd = 0;
 		uint8_t buf[BUF_SIZE] = {0};
 		rclcpp::TimerBase::SharedPtr timer_;
-		IMUPublisher() : Node("IMU_publisher")	
+		IMUNode() : Node("imu_node")	
 		{
 			this->declare_parameter<std::string>("serial_port", "/dev/ttyUSB1");
 			this->declare_parameter<int>("baud_rate", 460800);
@@ -58,13 +58,15 @@ class IMUPublisher : public rclcpp::Node
 			RCLCPP_INFO(this->get_logger(), "imu_topic: %s\r\n", imu_topic.c_str());
 			
 			imu_data.header.frame_id = frame_id;
-			imu_pub = this->create_publisher<sensor_msgs::msg::Imu>(imu_topic, 1);
+
+			auto sensor_data_qos = rclcpp::QoS(rclcpp::KeepLast(1)).best_effort().durability_volatile();
+			imu_pub = this->create_publisher<sensor_msgs::msg::Imu>(imu_topic, sensor_data_qos);
 
 			fd = open_serial(serial_port, baud_rate);
 
 			timer_ = this->create_wall_timer(
 			    std::chrono::milliseconds(1), // 1000 Hz
-			    std::bind(&IMUPublisher::imu_read, this)
+			    std::bind(&IMUNode::imu_read, this)
 			);
 		}
 
@@ -225,7 +227,7 @@ class IMUPublisher : public rclcpp::Node
 int main(int argc, const char * argv[])
 {
 	rclcpp::init(argc, argv);
-	rclcpp::spin(std::make_shared<IMUPublisher>());
+	rclcpp::spin(std::make_shared<IMUNode>());
 	rclcpp::shutdown();
 
 	return 0;

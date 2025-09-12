@@ -15,8 +15,8 @@ def generate_launch_description():
         [
             Node(
                 package="hipnuc_imu",
-                executable="talker",
-                name="IMU_publisher",
+                executable="imu_node",
+                name="imu_node",
                 parameters=[config],
                 output="screen",
             ),

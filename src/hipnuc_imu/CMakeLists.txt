@@ -51,8 +51,8 @@ ament_target_dependencies(listener rclcpp std_msgs sensor_msgs)
 install(TARGETS imu_node listener  DESTINATION lib/${PROJECT_NAME})
 install(DIRECTORY launch DESTINATION share/${PROJECT_NAME})
 install(DIRECTORY
-  config/
-  DESTINATION share/${PROJECT_NAME}/config
+  config
+  DESTINATION share/${PROJECT_NAME}
 )
 
 ament_package()

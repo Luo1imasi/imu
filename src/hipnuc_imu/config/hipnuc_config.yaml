@@ -4,5 +4,6 @@ imu_node:
         baud_rate: 921600
         frame_id: "base_link"
         imu_topic: "/IMU_data"
+        publish_rate: 500
 
 

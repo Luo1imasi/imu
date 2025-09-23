@@ -93,7 +93,7 @@ class IMUNode : public rclcpp::Node
 		void decode_thread(void)
 		{
 			pthread_setname_np(pthread_self(), "serial_rx");
-        	struct sched_param sp{}; sp.sched_priority = 80;
+        	struct sched_param sp{}; sp.sched_priority = 60;
         	pthread_setschedparam(pthread_self(), SCHED_FIFO, &sp);
             uint8_t buf[BUF_SIZE] = {0};
 			while(rclcpp::ok())

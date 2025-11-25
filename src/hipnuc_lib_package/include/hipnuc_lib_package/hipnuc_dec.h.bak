@@ -26,7 +26,7 @@
  #endif
  
  /* HiPNUC protocol constants */
-#define HIPNUC_MAX_RAW_SIZE     (512)   /* Maximum size of raw message buffer */
+ #define HIPNUC_MAX_RAW_SIZE     (256)   /* Maximum size of raw message buffer */
  
  /**
   * Packet 0x91: IMU data (floating point)

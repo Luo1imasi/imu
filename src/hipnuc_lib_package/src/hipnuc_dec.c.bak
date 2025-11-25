@@ -86,7 +86,7 @@ static double D8(uint8_t *p)
      /* ignore all previous data */
      raw->hi91.tag = 0;
      raw->hi81.tag = 0;
-     raw->hi83.tag = 0;
+    raw->hi83.tag = 0;
      raw->hi92.tag = 0;
  
      while (ofs < raw->len)

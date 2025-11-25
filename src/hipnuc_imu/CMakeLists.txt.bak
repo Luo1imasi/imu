@@ -39,7 +39,7 @@ if(BUILD_TESTING)
 endif()
 
 add_executable(imu_node src/serial_port.cpp)
-ament_target_dependencies(imu_node rclcpp std_msgs sensor_msgs hipnuc_lib_package rclcpp_components)
+ament_target_dependencies(imu_node rclcpp std_msgs sensor_msgs hipnuc_lib_package)
 
 set_target_properties(imu_node PROPERTIES
     BUILD_WITH_INSTALL_RPATH TRUE

@@ -8,7 +8,6 @@
 #include <termios.h>
 #include <thread>
 #include <atomic>
-#include <asm/termbits.h>
 #include <sys/ioctl.h>
 
 #ifdef __cplusplus
@@ -193,56 +192,100 @@ private:
             return -1;
         }
 
-        struct termios2 tty;
+        struct termios tty;
         memset(&tty, 0, sizeof(tty));
         
-        if (ioctl(fd, TCGETS2, &tty) != 0)
+        if (tcgetattr(fd, &tty) != 0)
         {
-            perror("Error from TCGETS2 ioctl");
+            perror("Error from tcgetattr");
             close(fd);
             return -1;
         }
 
-        // Set custom baud rate using BOTHER
-        tty.c_cflag &= ~CBAUD;
-        tty.c_cflag |= BOTHER;
-        tty.c_ispeed = baud;
-        tty.c_ospeed = baud;
+        // Try to set custom baud rate using termios2 if available
+        #ifdef __linux__
+        #include <asm/termbits.h>
+        struct termios2 tty2;
+        if (ioctl(fd, TCGETS2, &tty2) == 0)
+        {
+            tty2.c_cflag &= ~CBAUD;
+            tty2.c_cflag |= BOTHER;
+            tty2.c_ispeed = baud;
+            tty2.c_ospeed = baud;
 
-        // Configure other port settings
-        tty.c_cflag &= ~CSIZE;
-        tty.c_cflag |= CS8;      // 8 data bits
-        tty.c_cflag &= ~PARENB;  // No parity
-        tty.c_cflag &= ~CSTOPB;  // 1 stop bit
+            // Configure other port settings
+            tty2.c_cflag &= ~CSIZE;
+            tty2.c_cflag |= CS8;      // 8 data bits
+            tty2.c_cflag &= ~PARENB;  // No parity
+            tty2.c_cflag &= ~CSTOPB;  // 1 stop bit
+            
+            tty2.c_cflag |= (CLOCAL | CREAD);
+            tty2.c_cflag &= ~CRTSCTS;
         
-        tty.c_cflag |= (CLOCAL | CREAD);  // Enable receiver, ignore modem control lines
-    
-        // Disable hardware flow control
-        tty.c_cflag &= ~CRTSCTS;
-    
-        // Set input mode (non-canonical, no echo,...)
-        tty.c_lflag &= ~(ICANON | ECHO | ECHOE | ECHONL | ISIG);
-        tty.c_iflag &= ~(IXON | IXOFF | IXANY);  // Disable software flow control
-        tty.c_iflag &= ~(IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR | ICRNL);
-    
-        // Set output mode (raw output)
-        tty.c_oflag &= ~OPOST;
-    
-        // Set read timeout and minimum character count
-        tty.c_cc[VMIN] = 0;  // Minimum number of characters
-        tty.c_cc[VTIME] = 0;  // Timeout in deciseconds
-    
-        // Apply the new settings
-        if (ioctl(fd, TCSETS2, &tty) != 0)
-        {
-            perror("Error from TCSETS2 IOCTL");
-            close(fd);
-            return -1;
+            tty2.c_lflag &= ~(ICANON | ECHO | ECHOE | ECHONL | ISIG);
+            tty2.c_iflag &= ~(IXON | IXOFF | IXANY);
+            tty2.c_iflag &= ~(IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR | ICRNL);
+        
+            tty2.c_oflag &= ~OPOST;
+        
+            tty2.c_cc[VMIN] = 0;
+            tty2.c_cc[VTIME] = 0;
+        
+            if (ioctl(fd, TCSETS2, &tty2) != 0)
+            {
+                perror("Error from TCSETS2 IOCTL");
+                close(fd);
+                return -1;
+            }
         }
-    
-        // Flush the buffer
-        tcflush(fd, TCIOFLUSH);
+        else
+        #endif
+        {
+            // Fallback to standard termios
+            speed_t speed;
+            switch(baud) {
+                case 9600: speed = B9600; break;
+                case 19200: speed = B19200; break;
+                case 38400: speed = B38400; break;
+                case 57600: speed = B57600; break;
+                case 115200: speed = B115200; break;
+                case 230400: speed = B230400; break;
+                case 460800: speed = B460800; break;
+                case 921600: speed = B921600; break;
+                default:
+                    fprintf(stderr, "Unsupported baud rate: %d\n", baud);
+                    close(fd);
+                    return -1;
+            }
 
+            cfsetispeed(&tty, speed);
+            cfsetospeed(&tty, speed);
+
+            tty.c_cflag &= ~CSIZE;
+            tty.c_cflag |= CS8;
+            tty.c_cflag &= ~PARENB;
+            tty.c_cflag &= ~CSTOPB;
+            tty.c_cflag |= (CLOCAL | CREAD);
+            tty.c_cflag &= ~CRTSCTS;
+
+            tty.c_lflag &= ~(ICANON | ECHO | ECHOE | ECHONL | ISIG);
+            tty.c_iflag &= ~(IXON | IXOFF | IXANY);
+            tty.c_iflag &= ~(IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR | ICRNL);
+
+            tty.c_oflag &= ~OPOST;
+
+            tty.c_cc[VMIN] = 0;
+            tty.c_cc[VTIME] = 0;
+
+            if (tcsetattr(fd, TCSANOW, &tty) != 0)
+            {
+                perror("Error from tcsetattr");
+                close(fd);
+                return -1;
+            }
+        }
+
+        tcflush(fd, TCIOFLUSH);
         return fd;
     }
 

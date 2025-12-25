@@ -24,6 +24,9 @@ find_package(ament_cmake REQUIRED)
 add_library(${PROJECT_NAME} SHARED
   src/hipnuc_dec.c
   src/nmea_decode.c
+  src/hipnuc_can_common.c
+  src/hipnuc_j1939_parser.c
+  src/canopen_parser.c
 )
 
 target_include_directories(${PROJECT_NAME} PUBLIC

@@ -12,7 +12,8 @@ namespace hipnuc_driver {
 class HipnucIMUNode : public rclcpp::Node
 {
 public:
-    HipnucIMUNode() : Node("hipnuc_imu_node")
+    HipnucIMUNode(const rclcpp::NodeOptions& options = rclcpp::NodeOptions()) 
+        : Node("hipnuc_imu_node", options)
     {
         // ===== 声明参数 =====
         this->declare_parameter<std::string>("protocol", "serial");  // "serial" 或 "can"

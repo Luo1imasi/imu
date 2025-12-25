@@ -38,7 +38,7 @@ if(BUILD_TESTING)
   ament_lint_auto_find_test_dependencies()
 endif()
 
-add_executable(imu_node src/serial_port.cpp src/can_interface.c src/hipnuc_imu_node.cpp)
+add_executable(imu_node src/serial_port.cpp src/can_interface.cpp src/hipnuc_imu_node.cpp)
 ament_target_dependencies(imu_node rclcpp std_msgs sensor_msgs hipnuc_lib_package rclcpp_components)
 
 target_include_directories(imu_node PUBLIC

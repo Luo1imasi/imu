@@ -13,7 +13,7 @@ class HipnucIMUNode : public rclcpp::Node
 {
 public:
     HipnucIMUNode(const rclcpp::NodeOptions& options = rclcpp::NodeOptions()) 
-        : Node("hipnuc_imu_node", options)
+        : Node("imu_node", options)
     {
         // ===== 声明参数 =====
         this->declare_parameter<std::string>("protocol", "serial");  // "serial" 或 "can"
@@ -31,6 +31,8 @@ public:
         int publish_rate = this->get_parameter("publish_rate").as_int();
 
         RCLCPP_INFO(this->get_logger(), "========== HiPNUC IMU Node ==========");
+        RCLCPP_INFO(this->get_logger(), "Protocol: %s", protocol_.c_str());
+        RCLCPP_INFO(this->get_logger(), "Frame ID: %s", frame_id_.c_str());
         RCLCPP_INFO(this->get_logger(), "IMU Topic: %s", imu_topic.c_str());
         RCLCPP_INFO(this->get_logger(), "Publish Rate: %d Hz", publish_rate);
 
@@ -47,8 +49,6 @@ public:
             gps_pub_ = this->create_publisher<sensor_msgs::msg::NavSatFix>("imu/gps/fix", qos);
             velocity_pub_ = this->create_publisher<geometry_msgs::msg::TwistStamped>("imu/gps/velocity", qos);
         }
-        gps_pub_ = this->create_publisher<sensor_msgs::msg::NavSatFix>("imu/gps/fix", qos);
-        velocity_pub_ = this->create_publisher<geometry_msgs::msg::TwistStamped>("imu/gps/velocity", qos);
 
         // ===== 根据协议创建驱动 =====
         if (protocol_ == "serial") {

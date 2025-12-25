@@ -20,6 +20,7 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
 find_package(hipnuc_lib_package REQUIRED)
 find_package(rclcpp_components REQUIRED)
 
@@ -39,7 +40,7 @@ if(BUILD_TESTING)
 endif()
 
 add_executable(imu_node src/serial_port.cpp src/can_interface.cpp src/hipnuc_imu_node.cpp)
-ament_target_dependencies(imu_node rclcpp std_msgs sensor_msgs hipnuc_lib_package rclcpp_components)
+ament_target_dependencies(imu_node rclcpp std_msgs sensor_msgs hipnuc_lib_package rclcpp_components geometry_msgs)
 
 target_include_directories(imu_node PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>

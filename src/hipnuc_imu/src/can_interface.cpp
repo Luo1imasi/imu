@@ -173,15 +173,24 @@ private:
         struct can_frame linux_frame;
         struct timespec ts;
         
+        RCLCPP_INFO(node_->get_logger(), "CAN receive thread running, waiting for frames...");
+        int frame_count = 0;
+        
         while (running_ && rclcpp::ok()) {
             int nbytes = can_receive_frame_ts_internal(sockfd_, &linux_frame, &ts);
             if (nbytes < 0) {
                 if (errno == EINTR) continue;
-                RCLCPP_ERROR(node_->get_logger(), "CAN receive error");
+                RCLCPP_ERROR(node_->get_logger(), "CAN receive error: %s", strerror(errno));
                 break;
             }
             
             if (nbytes == 0) continue;
+            
+            frame_count++;
+            if (frame_count % 100 == 0) {
+                RCLCPP_INFO(node_->get_logger(), "Received %d CAN frames (last ID: 0x%X)", 
+                            frame_count, linux_frame.can_id);
+            }
             
             // 转换为 hipnuc_can_frame_t
             hipnuc_can_frame_t frame;
@@ -194,15 +203,19 @@ private:
             std::lock_guard<std::mutex> lock(data_mutex_);
             
             // 尝试 J1939 解析
-            if (hipnuc_j1939_parse_frame(&frame, &sensor_data_) == 0) {
+            int ret = hipnuc_j1939_parse_frame(&frame, &sensor_data_);
+            if (ret == 0) {
                 continue;
             }
             
             // 尝试 CANopen 解析
-            if (canopen_parse_frame(&frame, &sensor_data_) == 0) {
+            ret = canopen_parse_frame(&frame, &sensor_data_);
+            if (ret == 0) {
                 continue;
             }
         }
+        
+        RCLCPP_INFO(node_->get_logger(), "CAN receive thread stopped. Total frames: %d", frame_count);
     }
 
     // ===== SocketCAN 底层函数 =====

@@ -12,7 +12,6 @@ extern "C" {
 
 namespace hipnuc_driver {
 
-// ===== 串口驱动类 =====
 class SerialDriver
 {
 public:
@@ -67,7 +66,6 @@ public:
         }
     }
 
-    // 获取最新 IMU 数据
     std::shared_ptr<sensor_msgs::msg::Imu> getData()
     {
         return std::atomic_load(&read_buffer_);
@@ -115,7 +113,6 @@ private:
             if (total_read > 0) {
                 for (int i = 0; i < total_read; i++) {
                     if (hipnuc_input(&raw_, buf[i])) {
-                        // 解析成功，更新数据
                         write_buffer_->orientation.w = raw_.hi91.quat[0];
                         write_buffer_->orientation.x = raw_.hi91.quat[1];
                         write_buffer_->orientation.y = raw_.hi91.quat[2];
@@ -131,7 +128,6 @@ private:
                         
                         write_buffer_->header.stamp = node_->now();
                         
-                        // 原子交换缓冲区
                         write_buffer_ = std::atomic_exchange(&read_buffer_, write_buffer_);
                     }
                 }
@@ -155,7 +151,6 @@ private:
             return -1;
         }
 
-        // 尝试设置自定义波特率（Linux termios2）
         #ifdef __linux__
         #include <asm/termbits.h>
         struct termios2 tty2;
@@ -184,7 +179,6 @@ private:
         }
         #endif
 
-        // 标准波特率设置
         speed_t speed;
         switch (baud) {
             case 9600: speed = B9600; break;

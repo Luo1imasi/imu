@@ -15,7 +15,6 @@ extern "C" {
 
 namespace hipnuc_driver {
 
-// ===== CAN 驱动类 =====
 class CANDriver
 {
 public:
@@ -67,7 +66,6 @@ public:
         }
     }
 
-    // ===== 数据获取接口 =====
     bool getIMUData(sensor_msgs::msg::Imu& msg)
     {
         std::lock_guard<std::mutex> lock(data_mutex_);
@@ -192,23 +190,19 @@ private:
                             frame_count, linux_frame.can_id);
             }
             
-            // 转换为 hipnuc_can_frame_t
             hipnuc_can_frame_t frame;
             frame.can_id = linux_frame.can_id;
             frame.can_dlc = linux_frame.can_dlc;
             memcpy(frame.data, linux_frame.data, 8);
             frame.hw_ts_us = ts.tv_sec * 1000000ULL + ts.tv_nsec / 1000ULL;
             
-            // 解析 CAN 帧
             std::lock_guard<std::mutex> lock(data_mutex_);
             
-            // 尝试 J1939 解析
             int ret = hipnuc_j1939_parse_frame(&frame, &sensor_data_);
             if (ret == 0) {
                 continue;
             }
             
-            // 尝试 CANopen 解析
             ret = canopen_parse_frame(&frame, &sensor_data_);
             if (ret == 0) {
                 continue;
@@ -218,7 +212,6 @@ private:
         RCLCPP_INFO(node_->get_logger(), "CAN receive thread stopped. Total frames: %d", frame_count);
     }
 
-    // ===== SocketCAN 底层函数 =====
     int can_open_socket_internal(const char* ifname)
     {
         int s = socket(PF_CAN, SOCK_RAW, CAN_RAW);
@@ -248,7 +241,6 @@ private:
             return -1;
         }
 
-        // 启用硬件时间戳（可选）
         int enable = 1;
         setsockopt(s, SOL_SOCKET, SO_TIMESTAMP, &enable, sizeof(enable));
 
@@ -275,7 +267,6 @@ private:
             return -1;
         }
 
-        // 提取时间戳
         struct cmsghdr* cmsg;
         for (cmsg = CMSG_FIRSTHDR(&msg); cmsg != NULL; cmsg = CMSG_NXTHDR(&msg, cmsg)) {
             if (cmsg->cmsg_level == SOL_SOCKET && cmsg->cmsg_type == SO_TIMESTAMP) {
@@ -289,7 +280,6 @@ private:
         return nbytes;
     }
 
-    // ===== 成员变量 =====
     rclcpp::Node* node_;
     int sockfd_;
     std::atomic<bool> running_;

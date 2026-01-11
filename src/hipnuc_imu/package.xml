@@ -3,8 +3,8 @@
 <package format="3">
   <name>hipnuc_imu</name>
   <version>0.0.1</version>
-  <description>hipnuc_imu_data </description>
-  <maintainer email="linux@todo.todo">linux</maintainer>
+  <description>hipnuc_imu_data</description>
+  <maintainer email="2321901849@qq.com">linux</maintainer>
   <license>Apache License 2.0 </license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>

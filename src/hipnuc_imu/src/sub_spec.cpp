@@ -11,7 +11,9 @@ using namespace std;
 
 void topic_callback(const sensor_msgs::msg::Imu::SharedPtr msg)
 {
-
+	static int i = 0;
+	if (i++ % 100)
+		return ;
 	cout << "header:" << "\n";
 	cout << "	" << "stamp:"<< "\n";
 	cout << "	  " << "secs:" << msg->header.stamp.sec<< "\n";

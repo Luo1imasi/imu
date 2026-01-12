@@ -2,9 +2,9 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>hipnuc_imu</name>
-  <version>0.0.0</version>
-  <description>hipnuc_imu_data </description>
-  <maintainer email="linux@todo.todo">linux</maintainer>
+  <version>0.0.1</version>
+  <description>hipnuc_imu_data</description>
+  <maintainer email="2321901849@qq.com">linux</maintainer>
   <license>Apache License 2.0 </license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>

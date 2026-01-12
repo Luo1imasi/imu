@@ -20,7 +20,9 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
 find_package(hipnuc_lib_package REQUIRED)
+find_package(rclcpp_components REQUIRED)
 
 # uncomment the following section in order to fill in
 # further dependencies manually.
@@ -37,8 +39,13 @@ if(BUILD_TESTING)
   ament_lint_auto_find_test_dependencies()
 endif()
 
-add_executable(imu_node src/serial_port.cpp)
-ament_target_dependencies(imu_node rclcpp std_msgs sensor_msgs hipnuc_lib_package)
+add_executable(imu_node src/serial_port.cpp src/can_interface.cpp src/hipnuc_imu_node.cpp)
+ament_target_dependencies(imu_node rclcpp std_msgs sensor_msgs hipnuc_lib_package rclcpp_components geometry_msgs)
+
+target_include_directories(imu_node PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
 
 set_target_properties(imu_node PROPERTIES
     BUILD_WITH_INSTALL_RPATH TRUE
@@ -46,7 +53,7 @@ set_target_properties(imu_node PROPERTIES
 )
 
 add_executable(listener src/sub_spec.cpp)
-ament_target_dependencies(listener rclcpp std_msgs sensor_msgs)
+ament_target_dependencies(listener rclcpp std_msgs sensor_msgs rclcpp_components)
 
 install(TARGETS imu_node listener  DESTINATION lib/${PROJECT_NAME})
 install(DIRECTORY launch DESTINATION share/${PROJECT_NAME})

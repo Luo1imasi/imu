@@ -1,269 +1,231 @@
-#include <iostream>
-#include <sensor_msgs/msg/imu.hpp>
-#include "rclcpp/rclcpp.hpp"
-
+#include "hipnuc_imu/hipnuc_imu.h"
 #include <unistd.h>
 #include <fcntl.h>
-#include <errno.h>
 #include <termios.h>
-#include <thread>
-#include <atomic>
+#include <sys/ioctl.h>
 
-#ifdef __cplusplus
-extern "C"{
-#endif
-#include <poll.h>
-
+extern "C" {
 #include "hipnuc_lib_package/hipnuc_dec.h"
-
-#define GRA_ACC     (9.8)
-#define DEG_TO_RAD  (0.01745329)
-#define BUF_SIZE (76)
-#ifdef __cplusplus
 }
-#endif
 
-using namespace std::chrono_literals;
-using namespace std;
-static hipnuc_raw_t raw;
+#define BUF_SIZE (1024)
 
-static const struct {
-    int rate;
-    speed_t constant;
-} baud_map[] = {
-    {4800, B4800}, {9600, B9600}, {19200, B19200}, {38400, B38400},
-    {57600, B57600}, {115200, B115200}, {230400, B230400}, {460800, B460800}, {921600, B921600},
-    {0, B0}  // Sentinel
-};
+namespace hipnuc_driver {
 
-class IMUNode : public rclcpp::Node
+class SerialDriver
 {
-	public:
-		int fd = 0;
-		rclcpp::TimerBase::SharedPtr publish_timer_;
-		IMUNode() : Node("imu_node")	
-		{
-			this->declare_parameter<std::string>("serial_port", "/dev/ttyUSB1");
-			this->declare_parameter<int>("baud_rate", 460800);
-			this->declare_parameter<std::string>("frame_id", "base_link");
-			this->declare_parameter<std::string>("imu_topic", "/IMU_data");
-            this->declare_parameter<int>("publish_rate", 100);
+public:
+    SerialDriver(rclcpp::Node* node) 
+        : node_(node), fd_(-1), running_(false)
+    {
+        write_buffer_ = std::make_shared<sensor_msgs::msg::Imu>();
+        read_buffer_ = std::make_shared<sensor_msgs::msg::Imu>();
+        memset(&raw_, 0, sizeof(raw_));
+    }
 
-			this->get_parameter("serial_port", serial_port);
-			this->get_parameter("baud_rate", baud_rate);
-			this->get_parameter("frame_id", frame_id);
-			this->get_parameter("imu_topic", imu_topic);
-            this->get_parameter("publish_rate", publish_rate);
-
-			RCLCPP_INFO(this->get_logger(),"serial_port: %s\r\n", serial_port.c_str());
-			RCLCPP_INFO(this->get_logger(), "baud_rate: %d\r\n", baud_rate);
-			RCLCPP_INFO(this->get_logger(), "frame_id: %s\r\n", frame_id.c_str());
-			RCLCPP_INFO(this->get_logger(), "imu_topic: %s\r\n", imu_topic.c_str());
-            RCLCPP_INFO(this->get_logger(), "publish_rate: %d Hz\r\n", publish_rate);
-			write_buffer_ = std::make_shared<sensor_msgs::msg::Imu>();
-			write_buffer_->header.frame_id = frame_id;
-			read_buffer_ = std::make_shared<sensor_msgs::msg::Imu>();
-			read_buffer_->header.frame_id = frame_id;
-			auto sensor_data_qos = rclcpp::QoS(rclcpp::KeepLast(1)).best_effort().durability_volatile();
-			imu_pub = this->create_publisher<sensor_msgs::msg::Imu>(imu_topic, sensor_data_qos);
-
-			fd = open_serial(serial_port, baud_rate);
-
-            if (fd > 0) {
-                decode_thread_ = std::thread(&IMUNode::decode_thread, this);
-            }
-
-			publish_timer_ = this->create_wall_timer(
-			    std::chrono::milliseconds(1000 / publish_rate),
-			    std::bind(&IMUNode::publish_data, this)
-			);
-		}
-
-        ~IMUNode()
-        {
-            if (decode_thread_.joinable()) {
-                decode_thread_.join();
-            }
-            if (fd > 0) {
-                close(fd);
-            }
+    ~SerialDriver()
+    {
+        stop();
+        if (fd_ > 0) {
+            close(fd_);
         }
+    }
 
-	private: 
-		void decode_thread(void)
-		{
-			pthread_setname_np(pthread_self(), "serial_rx");
-        	struct sched_param sp{}; sp.sched_priority = 60;
-        	pthread_setschedparam(pthread_self(), SCHED_FIFO, &sp);
-            uint8_t buf[BUF_SIZE] = {0};
-			while(rclcpp::ok())
-            {
-			    int total_read = 0;
-    		    int ret;
+    bool initialize(const std::string& port, int baudrate, const std::string& frame_id)
+    {
+        write_buffer_->header.frame_id = frame_id;
+        read_buffer_->header.frame_id = frame_id;
+        
+        fd_ = open_serial(port, baudrate);
+        if (fd_ < 0) {
+            RCLCPP_ERROR(node_->get_logger(), "Failed to open serial port: %s", port.c_str());
+            return false;
+        }
+        
+        RCLCPP_INFO(node_->get_logger(), "Serial port opened: %s @ %d baud", port.c_str(), baudrate);
+        return true;
+    }
 
-    		    // Setup for select() timeout
-    		    struct timeval tv;
-    		    fd_set readfds;
-			    int timeout_ms = 1;
-    		    while (total_read < BUF_SIZE)
-    		    {
-    		        // Reset select() parameters for each iteration
-    		        FD_ZERO(&readfds);
-    		        FD_SET(fd, &readfds);
+    void start()
+    {
+        if (fd_ < 0) {
+            RCLCPP_ERROR(node_->get_logger(), "Cannot start: serial port not initialized");
+            return;
+        }
+        
+        running_ = true;
+        receive_thread_ = std::thread(&SerialDriver::receiveThread, this);
+        RCLCPP_INFO(node_->get_logger(), "Serial receive thread started");
+    }
 
-    		        // Configure timeout for this iteration
-    		        tv.tv_sec = timeout_ms / 1000;
-    		        tv.tv_usec = (timeout_ms % 1000) * 1000;
+    void stop()
+    {
+        running_ = false;
+        if (receive_thread_.joinable()) {
+            receive_thread_.join();
+        }
+    }
 
-    		        // Wait for data or timeout
-    		        ret = select(fd + 1, &readfds, NULL, NULL, &tv);
+    std::shared_ptr<sensor_msgs::msg::Imu> getData()
+    {
+        return std::atomic_load(&read_buffer_);
+    }
 
-    		        if (ret < 0)
-    		        {
-    		            // Handle interruption by signal
-    		            if (errno == EINTR)
-    		                continue;
-    		            perror("select");
-    		            return;
-    		        }
-    		        else if (ret == 0)
-    		        {
-    		            // No data received within timeout period
-    		            // This means the line has been idle for timeout_ms
-    		            break;
-    		        }
-
-    		        // Data is available, read it
-    		        ret = read(fd, buf + total_read, BUF_SIZE - total_read);
-    		        if (ret < 0)
-    		        {
-    		            // Handle non-blocking operations
-    		            if (errno == EAGAIN || errno == EWOULDBLOCK)
-    		                continue;
-    		            perror("read");
-    		            return;
-    		        }
-    		        else if (ret == 0)
-    		        {
-    		            // Port closed or disconnected
-    		            break;
-    		        }
-
-    		        // Update total bytes read
-    		        total_read += ret;
-    		    }
-                if(total_read > 0)
-                {
-                    for (int i = 0; i < total_read; i++) {
-                        if (hipnuc_input(&raw, buf[i])) {
-                            write_buffer_->orientation.w = raw.hi91.quat[0];
-                            write_buffer_->orientation.x = raw.hi91.quat[1];
-                            write_buffer_->orientation.y = raw.hi91.quat[2];
-                            write_buffer_->orientation.z = raw.hi91.quat[3];
-                            write_buffer_->angular_velocity.x = raw.hi91.gyr[0] * DEG_TO_RAD;
-                            write_buffer_->angular_velocity.y = raw.hi91.gyr[1] * DEG_TO_RAD;
-                            write_buffer_->angular_velocity.z = raw.hi91.gyr[2] * DEG_TO_RAD;
-                            write_buffer_->linear_acceleration.x = raw.hi91.acc[0] * GRA_ACC;
-                            write_buffer_->linear_acceleration.y = raw.hi91.acc[1] * GRA_ACC;
-                            write_buffer_->linear_acceleration.z = raw.hi91.acc[2] * GRA_ACC;
-                            write_buffer_->header.stamp = rclcpp::Clock().now();
-                            write_buffer_ = std::atomic_exchange(&read_buffer_, write_buffer_);
-                        }
+private:
+    void receiveThread()
+    {
+        pthread_setname_np(pthread_self(), "serial_rx");
+        
+        uint8_t buf[BUF_SIZE] = {0};
+        
+        while (running_ && rclcpp::ok()) {
+            int total_read = 0;
+            fd_set readfds;
+            struct timeval tv;
+            
+            while (total_read < BUF_SIZE) {
+                FD_ZERO(&readfds);
+                FD_SET(fd_, &readfds);
+                tv.tv_sec = 0;
+                tv.tv_usec = 1000;  // 1ms timeout
+                
+                int ret = select(fd_ + 1, &readfds, NULL, NULL, &tv);
+                if (ret < 0) {
+                    if (errno == EINTR) continue;
+                    RCLCPP_ERROR(node_->get_logger(), "select error");
+                    return;
+                } else if (ret == 0) {
+                    break;  // timeout
+                }
+                
+                ret = read(fd_, buf + total_read, BUF_SIZE - total_read);
+                if (ret < 0) {
+                    if (errno == EAGAIN || errno == EWOULDBLOCK) continue;
+                    RCLCPP_ERROR(node_->get_logger(), "read error");
+                    return;
+                } else if (ret == 0) {
+                    break;
+                }
+                
+                total_read += ret;
+            }
+            
+            if (total_read > 0) {
+                for (int i = 0; i < total_read; i++) {
+                    if (hipnuc_input(&raw_, buf[i])) {
+                        write_buffer_->orientation.w = raw_.hi91.quat[0];
+                        write_buffer_->orientation.x = raw_.hi91.quat[1];
+                        write_buffer_->orientation.y = raw_.hi91.quat[2];
+                        write_buffer_->orientation.z = raw_.hi91.quat[3];
+                        
+                        write_buffer_->angular_velocity.x = raw_.hi91.gyr[0] * DEG_TO_RAD;
+                        write_buffer_->angular_velocity.y = raw_.hi91.gyr[1] * DEG_TO_RAD;
+                        write_buffer_->angular_velocity.z = raw_.hi91.gyr[2] * DEG_TO_RAD;
+                        
+                        write_buffer_->linear_acceleration.x = raw_.hi91.acc[0] * GRA_ACC;
+                        write_buffer_->linear_acceleration.y = raw_.hi91.acc[1] * GRA_ACC;
+                        write_buffer_->linear_acceleration.z = raw_.hi91.acc[2] * GRA_ACC;
+                        
+                        write_buffer_->header.stamp = node_->now();
+                        
+                        write_buffer_ = std::atomic_exchange(&read_buffer_, write_buffer_);
                     }
-                    memset(buf, 0, sizeof(buf));
                 }
+                memset(buf, 0, sizeof(buf));
             }
         }
+    }
 
-        void publish_data(void)
-        {
-            auto data = std::atomic_load(&read_buffer_);
-            imu_pub->publish(*data);
+    int open_serial(const std::string& port, int baud)
+    {
+        int fd = open(port.c_str(), O_RDWR | O_NOCTTY | O_NDELAY);
+        if (fd < 0) {
+            return -1;
         }
 
-        int open_serial(std::string port, int baud) {
-            const char* port_device = port.c_str();
-            int fd = open(port_device, O_RDWR | O_NOCTTY | O_NDELAY);
-
-            if (fd == -1) {
-                perror("unable to open serial port");
-                exit(0);
-            }
-
-            struct termios options;
-            memset(&options, 0, sizeof(options));
-            tcgetattr(fd, &options);
-
-            // Set baud rate
-            speed_t baud_constant = B0;
-            for (int i = 0; baud_map[i].rate != 0; i++) {
-                if (baud_map[i].rate == baud) {
-                    baud_constant = baud_map[i].constant;
-    		        break;
-                }
-            }
-
-            if (baud_constant == B0) {
-                fprintf(stderr, "Unsupported baud rate: %d\n", baud);
-    		    return -1;
-            }
-
-            if (cfsetispeed(&options, baud_constant) < 0 || 
-    		    cfsetospeed(&options, baud_constant) < 0) {
-    		    perror("Error setting baud rate");
-    		    return -1;
-    		}
-
-			 // Configure other port settings
-    		options.c_cflag &= ~PARENB;  // No parity
-    		options.c_cflag &= ~CSTOPB;  // 1 stop bit
-    		options.c_cflag &= ~CSIZE;
-    		options.c_cflag |= CS8;      // 8 data bits
-    		options.c_cflag |= (CLOCAL | CREAD);  // Enable receiver, ignore modem control lines
-		
-    		// Disable hardware flow control
-    		options.c_cflag &= ~CRTSCTS;
-		
-    		// Set input mode (non-canonical, no echo,...)
-    		options.c_lflag &= ~(ICANON | ECHO | ECHOE | ISIG);
-    		options.c_iflag &= ~(IXON | IXOFF | IXANY);  // Disable software flow control
-    		options.c_iflag &= ~(INLCR | ICRNL);  // Disable newline & carriage return translation
-		
-    		// Set output mode (raw output)
-    		options.c_oflag &= ~OPOST;
-		
-    		// Set read timeout and minimum character count
-    		options.c_cc[VMIN] = 0;  // Minimum number of characters
-    		options.c_cc[VTIME] = 0;  // Timeout in deciseconds
-		
-    		// Apply the new settings
-    		if (tcsetattr(fd, TCSANOW, &options) != 0) {
-    		    perror("Error setting port attributes");
-    		    return -1;
-    		}
-		
-    		// Flush the buffer
-    		tcflush(fd, TCIOFLUSH);
-
-			return fd;
+        struct termios tty;
+        memset(&tty, 0, sizeof(tty));
+        
+        if (tcgetattr(fd, &tty) != 0) {
+            close(fd);
+            return -1;
         }
 
-        std::string serial_port;
-        int baud_rate;
-        int publish_rate;
-        std::string frame_id;
-        std::string imu_topic;
-		std::shared_ptr<sensor_msgs::msg::Imu> write_buffer_, read_buffer_;
-        rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub;
-        std::thread decode_thread_;
+        #ifdef __linux__
+        #include <asm/termbits.h>
+        struct termios2 tty2;
+        if (ioctl(fd, TCGETS2, &tty2) == 0) {
+            tty2.c_cflag &= ~CBAUD;
+            tty2.c_cflag |= BOTHER;
+            tty2.c_ispeed = baud;
+            tty2.c_ospeed = baud;
+            tty2.c_cflag &= ~CSIZE;
+            tty2.c_cflag |= CS8;
+            tty2.c_cflag &= ~PARENB;
+            tty2.c_cflag &= ~CSTOPB;
+            tty2.c_cflag |= (CLOCAL | CREAD);
+            tty2.c_cflag &= ~CRTSCTS;
+            tty2.c_lflag &= ~(ICANON | ECHO | ECHOE | ECHONL | ISIG);
+            tty2.c_iflag &= ~(IXON | IXOFF | IXANY);
+            tty2.c_iflag &= ~(IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR | ICRNL);
+            tty2.c_oflag &= ~OPOST;
+            tty2.c_cc[VMIN] = 0;
+            tty2.c_cc[VTIME] = 0;
+            
+            if (ioctl(fd, TCSETS2, &tty2) == 0) {
+                tcflush(fd, TCIOFLUSH);
+                return fd;
+            }
+        }
+        #endif
+
+        speed_t speed;
+        switch (baud) {
+            case 9600: speed = B9600; break;
+            case 19200: speed = B19200; break;
+            case 38400: speed = B38400; break;
+            case 57600: speed = B57600; break;
+            case 115200: speed = B115200; break;
+            case 230400: speed = B230400; break;
+            case 460800: speed = B460800; break;
+            case 921600: speed = B921600; break;
+            default:
+                close(fd);
+                return -1;
+        }
+
+        cfsetispeed(&tty, speed);
+        cfsetospeed(&tty, speed);
+        tty.c_cflag &= ~CSIZE;
+        tty.c_cflag |= CS8;
+        tty.c_cflag &= ~PARENB;
+        tty.c_cflag &= ~CSTOPB;
+        tty.c_cflag |= (CLOCAL | CREAD);
+        tty.c_cflag &= ~CRTSCTS;
+        tty.c_lflag &= ~(ICANON | ECHO | ECHOE | ECHONL | ISIG);
+        tty.c_iflag &= ~(IXON | IXOFF | IXANY);
+        tty.c_iflag &= ~(IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR | ICRNL);
+        tty.c_oflag &= ~OPOST;
+        tty.c_cc[VMIN] = 0;
+        tty.c_cc[VTIME] = 0;
+
+        if (tcsetattr(fd, TCSANOW, &tty) != 0) {
+            close(fd);
+            return -1;
+        }
+
+        tcflush(fd, TCIOFLUSH);
+        return fd;
+    }
+
+    rclcpp::Node* node_;
+    int fd_;
+    std::atomic<bool> running_;
+    std::thread receive_thread_;
+    
+    hipnuc_raw_t raw_;
+    std::shared_ptr<sensor_msgs::msg::Imu> write_buffer_;
+    std::shared_ptr<sensor_msgs::msg::Imu> read_buffer_;
 };
 
-
-int main(int argc, const char * argv[])
-{
-	rclcpp::init(argc, argv);
-	rclcpp::spin(std::make_shared<IMUNode>());
-	rclcpp::shutdown();
-
-	return 0;
-}
+} // namespace hipnuc_driver

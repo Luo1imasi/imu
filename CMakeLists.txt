@@ -18,11 +18,10 @@ find_package(pybind11 REQUIRED)
 
 set(PUBLIC_DEPENDENCIES
     fmt::fmt spdlog::spdlog pthread)
-set(CMAKE_INSTALL_RPATH "$ORIGIN")
 
 add_subdirectory(src)
 
-add_library(imu SHARED
+add_library(imu STATIC
   src/imu_driver.cpp
 )
 
@@ -33,12 +32,12 @@ target_include_directories(imu
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
 )
 
-target_link_libraries(imu PUBLIC ${PUBLIC_DEPENDENCIES} serial can hipnuc_imu)
+target_link_libraries(imu PUBLIC ${PUBLIC_DEPENDENCIES} hipnuc_imu imu_protocol)
 
 install(DIRECTORY include/ DESTINATION include)
 install(DIRECTORY src/ DESTINATION include FILES_MATCHING PATTERN "*.h")
 
-install(TARGETS imu hipnuc_imu can serial
+install(TARGETS imu hipnuc_imu imu_protocol
   LIBRARY DESTINATION lib
   ARCHIVE DESTINATION lib
   RUNTIME DESTINATION bin
@@ -53,13 +52,15 @@ target_include_directories(imu_py
 )
 target_link_libraries(imu_py PUBLIC imu)
 
+set(PYTHON_INSTALL_DIR "lib/python${Python3_VERSION_MAJOR}.${Python3_VERSION_MINOR}/site-packages")
+
 install(TARGETS imu_py
-  LIBRARY DESTINATION lib
-  ARCHIVE DESTINATION lib
-  RUNTIME DESTINATION bin
+  LIBRARY DESTINATION ${PYTHON_INSTALL_DIR}
+  ARCHIVE DESTINATION ${PYTHON_INSTALL_DIR}
+  RUNTIME DESTINATION ${PYTHON_INSTALL_DIR}
 )
 
-ament_export_libraries(imu)
+ament_export_libraries(imu hipnuc_imu imu_protocol)
 ament_export_include_directories(include)
 
 ament_package()

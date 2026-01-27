@@ -12,7 +12,7 @@ void SerialPort::init() {
     if (fd_ < 0) {
         if (logger_) logger_->error("Failed to open serial port: {}", interface_);
         else std::cerr << "Failed to open serial port: " << interface_ << std::endl;
-        return;
+        throw std::runtime_error("Failed to open serial port: " + interface_);
     }
 
     struct termios tty;
@@ -20,7 +20,7 @@ void SerialPort::init() {
         if (logger_) logger_->error("Failed to get serial attributes: {}", interface_);
         else std::cerr << "Failed to get serial attributes: " << interface_ << std::endl;
         ::close(fd_);
-        return;
+        throw std::runtime_error("Failed to get serial attributes: " + interface_);
     }
 
     bool configured = false;
@@ -61,7 +61,7 @@ void SerialPort::init() {
             if (logger_) logger_->error("Failed to set serial attributes: {}", interface_);
             else std::cerr << "Failed to set serial attributes: " << interface_ << std::endl;
             ::close(fd_);
-            return;
+            throw std::runtime_error("Failed to set serial attributes: " + interface_);
         }
     }
 

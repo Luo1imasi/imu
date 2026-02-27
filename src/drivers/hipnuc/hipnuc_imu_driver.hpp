@@ -34,7 +34,6 @@ class HipnucIMUDriver : public IMUDriver {
     float get_temperature() override;
 
    private:
-    uint16_t imu_id_;
     int baudrate_;
     std::string interface_type_;
     std::string interface_;

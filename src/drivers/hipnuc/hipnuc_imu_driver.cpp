@@ -1,7 +1,8 @@
 #include "hipnuc_imu_driver.hpp"
 
 HipnucIMUDriver::HipnucIMUDriver(uint16_t imu_id, const std::string& interface_type, const std::string& interface, const int baudrate)
-    : IMUDriver(), imu_id_(imu_id), interface_type_(interface_type), interface_(interface) {
+    : IMUDriver(), interface_type_(interface_type), interface_(interface) {
+    imu_id_ = imu_id;
     memset(&raw_, 0, sizeof(raw_));
     memset(&sensor_data_, 0, sizeof(sensor_data_));
     if (interface_type_ == "serial") {

@@ -2,10 +2,10 @@
 
 extern "C" {
 #include "hipnuc_dec.h"
-#include "nmea_decode.h"
+// #include "nmea_decode.h"
 #include "hipnuc_can_common.h"
 #include "hipnuc_j1939_parser.h"
-#include "canopen_parser.h"
+// #include "canopen_parser.h"
 }
 
 #include <memory>

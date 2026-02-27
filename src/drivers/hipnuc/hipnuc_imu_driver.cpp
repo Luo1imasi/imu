@@ -39,12 +39,15 @@ void HipnucIMUDriver::can_rx_cbk(const can_frame& rx_frame) {
     std::unique_lock<std::shared_mutex> lock(imu_mutex_);
     
     int ret = hipnuc_j1939_parse_frame(&frame, &sensor_data_);
-    if (ret == 0) {
+    if (ret == CAN_MSG_ACCEL) {
+        sensor_data_.acc_x *= GRA_ACC;
+        sensor_data_.acc_y *= GRA_ACC;
+        sensor_data_.acc_z *= GRA_ACC;
         return;
-    }
-    
-    ret = canopen_parse_frame(&frame, &sensor_data_);
-    if (ret == 0) {
+    } else if (ret == CAN_MSG_GYRO) {
+        sensor_data_.gyr_x *= DEG_TO_RAD;
+        sensor_data_.gyr_y *= DEG_TO_RAD;
+        sensor_data_.gyr_z *= DEG_TO_RAD;
         return;
     }
 }

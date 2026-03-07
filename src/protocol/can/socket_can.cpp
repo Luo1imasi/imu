@@ -1,30 +1,27 @@
 /**
  * @file
  * This file implements functions to receive
- * and transmit CAN frames via SocketCAN.
+ * CAN frames via SocketCAN.
  */
 
 #include "socket_can.hpp"
 
-std::shared_ptr<spdlog::logger> SocketCAN::logger_ = nullptr;
-std::unordered_map<std::string, std::shared_ptr<SocketCAN>> SocketCAN::instances_;
+std::shared_ptr<spdlog::logger> IMUSocketCAN::logger_ = nullptr;
+std::unordered_map<std::string, std::shared_ptr<IMUSocketCAN>> IMUSocketCAN::instances_;
 
-SocketCAN::SocketCAN(std::string interface)
-    : interface_(interface), sockfd_(INIT_FD), receiving_(false), tx_queue_(TX_QUEUE_SIZE) {
+IMUSocketCAN::IMUSocketCAN(std::string interface)
+    : interface_(interface), sockfd_(INIT_FD), receiving_(false) {
     open(interface);
 }
 
-SocketCAN::~SocketCAN() { this->close(); }
+IMUSocketCAN::~IMUSocketCAN() { this->close(); }
 
-void SocketCAN::open(std::string interface) {
+void IMUSocketCAN::open(std::string interface) {
     sockfd_ = socket(PF_CAN, SOCK_RAW, CAN_RAW);
     if (sockfd_ == INIT_FD) {
         logger_->error("Failed to create CAN socket");
         throw std::runtime_error("Failed to create CAN socket");
     }
-
-    int bufsize = 1024 * 1024;  // 1MB
-    setsockopt(sockfd_, SOL_SOCKET, SO_SNDBUF, &bufsize, sizeof(bufsize));
 
     strncpy(if_request_.ifr_name, interface.c_str(), IFNAMSIZ);
     if (ioctl(sockfd_, SIOCGIFINDEX, &if_request_) == -1) {
@@ -61,7 +58,7 @@ void SocketCAN::open(std::string interface) {
         pthread_setname_np(pthread_self(), "can_rx");
         struct sched_param sp{}; sp.sched_priority = 80;
         if (pthread_setschedparam(pthread_self(), SCHED_FIFO, &sp) != 0) {
-            throw std::runtime_error("Failed to set realtime priority for IMU CAN RX thread");
+            logger_->error("Failed to set realtime priority for IMU CAN RX thread");
         }
         fd_set descriptors;
         int maxfd = sockfd_;
@@ -75,7 +72,13 @@ void SocketCAN::open(std::string interface) {
             timeout.tv_sec = TIMEOUT_SEC;
             timeout.tv_usec = TIMEOUT_USEC;
 
-            if (::select(maxfd + 1, &descriptors, NULL, NULL, &timeout) == 1) {
+            int sel_ret = ::select(maxfd + 1, &descriptors, NULL, NULL, &timeout);
+            if (sel_ret < 0) {
+                if (errno == EINTR) continue;
+                logger_->error("CAN select error: {}", strerror(errno));
+                break;
+            }
+            if (sel_ret == 1) {
                 while (true){
                     int len = ::read(sockfd_, &rx_frame, CAN_MTU);
                     if (len < 0) {
@@ -104,71 +107,38 @@ void SocketCAN::open(std::string interface) {
             }
         }
     });
-
-    sender_thread_ = std::thread([this]() {
-        pthread_setname_np(pthread_self(), "can_tx");
-        struct sched_param sp{}; sp.sched_priority = 80;
-        if (pthread_setschedparam(pthread_self(), SCHED_FIFO, &sp) != 0) {
-            throw std::runtime_error("Failed to set realtime priority for IMU CAN TX thread");
-        }
-        can_frame tx_frame;
-        int count = 0;
-        while (receiving_) {
-            {
-                std::unique_lock<std::mutex> lock(tx_mutex_);
-                tx_cv_.wait(lock, [this]() { return !tx_queue_.empty() || !receiving_; });
-                if (!receiving_) break;
-                if (!tx_queue_.pop(tx_frame)) continue;
-            }
-            while (::write(sockfd_, &tx_frame, sizeof(can_frame)) < 0 && count < MAX_RETRY_COUNT) {
-                count += 1;
-                std::this_thread::sleep_for(std::chrono::microseconds(1000));  // 避免忙等待
-            }
-            if (count >= MAX_RETRY_COUNT) {
-                logger_->error("Failed to transmit CAN frame");
-            } else if (send_sleep_us_ > 0) {
-                std::this_thread::sleep_for(std::chrono::microseconds(send_sleep_us_));
-            }
-            count = 0;
-        }
-    });
 }
 
-void SocketCAN::close() {
+void IMUSocketCAN::close() {
     receiving_ = false;
-    tx_cv_.notify_one();
     if (receiver_thread_.joinable()) receiver_thread_.join();
-    if (sender_thread_.joinable()) sender_thread_.join();
 
-    if (sockfd_ != INIT_FD) ::close(sockfd_);
+    if (sockfd_ != INIT_FD) {
+        if (::close(sockfd_) < 0) {
+            logger_->warn("Failed to close socket {}: {}", interface_, strerror(errno));
+        } else {
+            logger_->info("CAN interface {} closed successfully.", interface_);
+        }
+    }
     sockfd_ = INIT_FD;
 }
 
-void SocketCAN::transmit(const can_frame &frame) {
-    if (sockfd_ == INIT_FD) {
-        logger_->error("Unable to transmit: Socket not open");
-        return;
-    }
-    tx_queue_.bounded_push(frame);
-    tx_cv_.notify_one();
-}
-
-void SocketCAN::add_can_callback(const CanCbkFunc callback, const CanCbkId id) {
+void IMUSocketCAN::add_can_callback(const CanCbkFunc callback, const CanCbkId id) {
     std::lock_guard<std::mutex> lock(can_callback_mutex_);
     can_callback_list_[id] = callback;
 }
 
-void SocketCAN::remove_can_callback(CanCbkId id) {
+void IMUSocketCAN::remove_can_callback(CanCbkId id) {
     std::lock_guard<std::mutex> lock(can_callback_mutex_);
     can_callback_list_.erase(id);
 }
 
-void SocketCAN::clear_can_callbacks() {
+void IMUSocketCAN::clear_can_callbacks() {
     std::lock_guard<std::mutex> lock(can_callback_mutex_);
     can_callback_list_.clear();
 }
 
-void SocketCAN::set_key_extractor(CanCbkKeyExtractor extractor) {
+void IMUSocketCAN::set_key_extractor(CanCbkKeyExtractor extractor) {
     std::lock_guard<std::mutex> lock(can_callback_mutex_);
     key_extractor_ = std::move(extractor);
 }

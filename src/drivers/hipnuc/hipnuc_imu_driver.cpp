@@ -7,11 +7,11 @@ HipnucIMUDriver::HipnucIMUDriver(uint16_t imu_id, const std::string& interface_t
     memset(&sensor_data_, 0, sizeof(sensor_data_));
     if (interface_type_ == "serial") {
         baudrate_ = baudrate;
-        serial_ = SerialPort::open(interface_, baudrate_);
-        SerialPort::SerialCbkFunc serial_callback = std::bind(&HipnucIMUDriver::serial_rx_cbk, this, std::placeholders::_1, std::placeholders::_2);
+        serial_ = IMUSerialPort::open(interface_, baudrate_);
+        IMUSerialPort::SerialCbkFunc serial_callback = std::bind(&HipnucIMUDriver::serial_rx_cbk, this, std::placeholders::_1, std::placeholders::_2);
         serial_->set_serial_callback(serial_callback);
     } else if (interface_type_ == "can") {
-        can_ = SocketCAN::get(interface_);
+        can_ = IMUSocketCAN::get_instance(interface_);
         CanCbkFunc can_callback = std::bind(&HipnucIMUDriver::can_rx_cbk, this, std::placeholders::_1);
         can_->add_can_callback(can_callback, imu_id_);
         can_->set_key_extractor([](const can_frame &frame) -> CanCbkId {

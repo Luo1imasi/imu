@@ -21,23 +21,23 @@
 
 #define BUF_SIZE 1024
 
-class SerialPort {
+class IMUSerialPort {
 public:
     using SerialCbkFunc = std::function<void(const uint8_t*, size_t)>;
 
-    SerialPort(const SerialPort &) = delete;
-    SerialPort &operator=(const SerialPort &) = delete;
-    ~SerialPort();
+    IMUSerialPort(const IMUSerialPort &) = delete;
+    IMUSerialPort &operator=(const IMUSerialPort &) = delete;
+    ~IMUSerialPort();
 
     static void init_logger(std::shared_ptr<spdlog::logger> logger) { logger_ = logger; }
-    static std::shared_ptr<SerialPort> open(const std::string& interface, int baudrate);
+    static std::shared_ptr<IMUSerialPort> open(const std::string& interface, int baudrate);
     void init();
 
     void set_serial_callback(SerialCbkFunc callback);
     void close();
 
 private:
-    SerialPort(const std::string& interface, int baudrate);
+    IMUSerialPort(const std::string& interface, int baudrate);
 
     std::string interface_;
     int baudrate_;

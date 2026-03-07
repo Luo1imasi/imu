@@ -1,24 +1,22 @@
 #include "serial_port.hpp"
 
-std::shared_ptr<spdlog::logger> SerialPort::logger_ = nullptr;
+std::shared_ptr<spdlog::logger> IMUSerialPort::logger_ = nullptr;
 
-SerialPort::SerialPort(const std::string& interface, int baudrate) 
+IMUSerialPort::IMUSerialPort(const std::string& interface, int baudrate) 
     : interface_(interface), baudrate_(baudrate), fd_(-1), running_(false) {
     init();
 }
 
-void SerialPort::init() {
+void IMUSerialPort::init() {
     fd_ = ::open(interface_.c_str(), O_RDWR | O_NOCTTY | O_NDELAY);
     if (fd_ < 0) {
         if (logger_) logger_->error("Failed to open serial port: {}", interface_);
-        else std::cerr << "Failed to open serial port: " << interface_ << std::endl;
         throw std::runtime_error("Failed to open serial port: " + interface_);
     }
 
     struct termios tty;
     if (tcgetattr(fd_, &tty) != 0) {
         if (logger_) logger_->error("Failed to get serial attributes: {}", interface_);
-        else std::cerr << "Failed to get serial attributes: " << interface_ << std::endl;
         ::close(fd_);
         throw std::runtime_error("Failed to get serial attributes: " + interface_);
     }
@@ -59,7 +57,6 @@ void SerialPort::init() {
 
         if (tcsetattr(fd_, TCSANOW, &tty) != 0) {
             if (logger_) logger_->error("Failed to set serial attributes: {}", interface_);
-            else std::cerr << "Failed to set serial attributes: " << interface_ << std::endl;
             ::close(fd_);
             throw std::runtime_error("Failed to set serial attributes: " + interface_);
         }
@@ -71,7 +68,6 @@ void SerialPort::init() {
         struct sched_param sp{}; sp.sched_priority = 80;
         if (pthread_setschedparam(pthread_self(), SCHED_FIFO, &sp) != 0) {
             if (logger_) logger_->error("Failed to set realtime priority for IMU serial RX");
-            throw std::runtime_error("Failed to set realtime priority for IMU serial RX");
         } 
         uint8_t buf[BUF_SIZE] = {0};
         
@@ -88,7 +84,6 @@ void SerialPort::init() {
             if (ret < 0) {
                 if (errno == EINTR) continue;
                 if (logger_) logger_->error("select error: {}", strerror(errno));
-                else std::cerr << "select error: " << strerror(errno) << std::endl;
                 break;
             } else if (ret == 0) {
                 continue;  // timeout
@@ -98,7 +93,6 @@ void SerialPort::init() {
             if (n < 0) {
                 if (errno == EAGAIN || errno == EWOULDBLOCK) continue;
                 if (logger_) logger_->error("read error: {}", strerror(errno));
-                else std::cerr << "read error: " << strerror(errno) << std::endl;
                 break; 
             } else if (n > 0) {
                 if (callback_) {
@@ -109,26 +103,39 @@ void SerialPort::init() {
     });
 }
 
-SerialPort::~SerialPort() {
+IMUSerialPort::~IMUSerialPort() {
     close();
 }
 
-std::shared_ptr<SerialPort> SerialPort::open(const std::string& interface, int baudrate) {
-    return std::shared_ptr<SerialPort>(new SerialPort(interface, baudrate));
+std::shared_ptr<IMUSerialPort> IMUSerialPort::open(const std::string& interface, int baudrate) {
+    if (!logger_) {
+        logger_ = spdlog::get("imu");
+        if (!logger_) {
+            std::vector<spdlog::sink_ptr> sinks;
+            sinks.push_back(std::make_shared<spdlog::sinks::stderr_color_sink_st>());
+            logger_ = std::make_shared<spdlog::logger>("imu", std::begin(sinks), std::end(sinks));
+            spdlog::register_logger(logger_);
+        }
+    }
+    return std::shared_ptr<IMUSerialPort>(new IMUSerialPort(interface, baudrate));
 }
 
-void SerialPort::close() {
+void IMUSerialPort::close() {
     running_ = false;
     if (rx_thread_.joinable()) {
         rx_thread_.join();
     }
     if (fd_ >= 0) {
-        ::close(fd_);
+        if (::close(fd_) < 0) {
+            if (logger_) logger_->warn("Failed to close serial port {}: {}", interface_, strerror(errno));
+        } else {
+            if (logger_) logger_->info("Serial port {} closed successfully.", interface_);
+        }
         fd_ = -1;
     }
 }
 
-void SerialPort::set_serial_callback(SerialCbkFunc callback) {
+void IMUSerialPort::set_serial_callback(SerialCbkFunc callback) {
     callback_ = callback;
 }
 

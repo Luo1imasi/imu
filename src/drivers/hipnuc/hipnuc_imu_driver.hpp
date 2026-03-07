@@ -38,8 +38,8 @@ class HipnucIMUDriver : public IMUDriver {
     std::string interface_type_;
     std::string interface_;
     mutable std::shared_mutex imu_mutex_;
-    std::shared_ptr<SocketCAN> can_;
-    std::shared_ptr<SerialPort> serial_;
+    std::shared_ptr<IMUSocketCAN> can_;
+    std::shared_ptr<IMUSerialPort> serial_;
     can_sensor_data_t sensor_data_;
     hipnuc_raw_t raw_;
 };

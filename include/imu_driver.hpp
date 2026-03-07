@@ -2,6 +2,8 @@
 
 #include <stdint.h>
 #include <string.h>
+#include <spdlog/spdlog.h>
+#include <spdlog/sinks/stdout_color_sinks.h>
 #include <iostream>
 #include <cmath>
 #include <functional>
@@ -13,7 +15,15 @@
 class IMUDriver {
    public:
 
-    IMUDriver(){};
+    IMUDriver() {
+        std::vector<spdlog::sink_ptr> sinks;
+        sinks.push_back(std::make_shared<spdlog::sinks::stderr_color_sink_st>());
+        logger_ = spdlog::get("imu");
+        if (!logger_) {
+            logger_ = std::make_shared<spdlog::logger>("imu", std::begin(sinks), std::end(sinks));
+            spdlog::register_logger(logger_);
+        }
+    }
     virtual ~IMUDriver() = default;
 
     static std::shared_ptr<IMUDriver> create_imu(uint16_t imu_id, const std::string& interface_type, const std::string& interface,
@@ -26,6 +36,7 @@ class IMUDriver {
     virtual float get_temperature() { return temperature_; }
 
    protected:
+    std::shared_ptr<spdlog::logger> logger_;
     uint16_t imu_id_;
 
     std::vector<float> quat_{0.f, 0.f, 0.f, 0.f};       // w, x, y, z

@@ -1,7 +1,7 @@
 /**
  * @file
  * This file declares an interface to SocketCAN,
- * to facilitates frame transmission and reception.
+ * to facilitate frame reception.
  */
 
 #pragma once
@@ -17,8 +17,6 @@
 #include <fcntl.h>
 
 #include <atomic>
-#include <boost/lockfree/queue.hpp>
-#include <condition_variable>
 #include <cstdbool>
 #include <cstdio>
 #include <cstring>
@@ -30,23 +28,16 @@
 constexpr const int INIT_FD = -1;
 constexpr const int TIMEOUT_SEC = 0;
 constexpr const int TIMEOUT_USEC = 1000;
-constexpr const int TX_QUEUE_SIZE = 4096;
-constexpr const int MAX_RETRY_COUNT = 3;
-
-using LFQueue = boost::lockfree::queue<can_frame, boost::lockfree::fixed_sized<true>>;
 using CanCbkFunc = std::function<void(const can_frame &)>;
 using CanCbkId = uint16_t;
 using CanCbkMap = std::unordered_map<CanCbkId, CanCbkFunc>;
 using CanCbkKeyExtractor = std::function<CanCbkId(const can_frame &)>;
 
-class SocketCAN {
+class IMUSocketCAN {
    private:
     std::string interface_;  // The network interface name
     int sockfd_ = -1;        // The file descriptor for the CAN socket
     std::atomic<bool> receiving_;
-    LFQueue tx_queue_;
-    std::mutex tx_mutex_;
-    std::condition_variable tx_cv_;
 
     sockaddr_can addr_;      // The address of the CAN socket
     ifreq if_request_;       // The network interface request
@@ -59,34 +50,36 @@ class SocketCAN {
         return static_cast<CanCbkId>(frame.can_id);
     };
 
-    /// Transmitting
-    std::thread sender_thread_;
-    std::atomic<int> send_sleep_us_{0};
+    IMUSocketCAN(std::string port_name);
 
-    SocketCAN(std::string interface);
-
-    static std::shared_ptr<SocketCAN> createInstance(const std::string &interface) {
-        return std::shared_ptr<SocketCAN>(new SocketCAN(interface));
+    static std::shared_ptr<IMUSocketCAN> createInstance(const std::string &port_name) {
+        return std::shared_ptr<IMUSocketCAN>(new IMUSocketCAN(port_name));
     }
     static std::shared_ptr<spdlog::logger> logger_;
-    static std::unordered_map<std::string, std::shared_ptr<SocketCAN>> instances_;
+    static std::unordered_map<std::string, std::shared_ptr<IMUSocketCAN>> instances_;
 
    public:
-    SocketCAN(const SocketCAN &) = delete;
-    SocketCAN &operator=(const SocketCAN &) = delete;
-    ~SocketCAN();
+    IMUSocketCAN(const IMUSocketCAN &) = delete;
+    IMUSocketCAN &operator=(const IMUSocketCAN &) = delete;
+    ~IMUSocketCAN();
     static void init_logger(std::shared_ptr<spdlog::logger> logger) { logger_ = logger; }
-    static std::shared_ptr<SocketCAN> get(std::string interface) {
-        if (logger_.get() == nullptr) logger_ = spdlog::stdout_color_mt("SocketCAN");
-        if (instances_.find(interface) == instances_.end()) instances_[interface] = createInstance(interface);
-        return instances_[interface];
+    static std::shared_ptr<IMUSocketCAN> get_instance(std::string port_name) {
+        if (!logger_) {
+            logger_ = spdlog::get("imu");
+            if (!logger_) {
+                std::vector<spdlog::sink_ptr> sinks;
+                sinks.push_back(std::make_shared<spdlog::sinks::stderr_color_sink_st>());
+                logger_ = std::make_shared<spdlog::logger>("imu", std::begin(sinks), std::end(sinks));
+                spdlog::register_logger(logger_);
+            }
+        }
+        if (instances_.find(port_name) == instances_.end()) instances_[port_name] = createInstance(port_name);
+        return instances_[port_name];
     }
     void open(std::string interface);
     void close();
-    void transmit(const can_frame &frame);
     void add_can_callback(const CanCbkFunc callback, const CanCbkId id);
     void remove_can_callback(const CanCbkId id);
     void clear_can_callbacks();
     void set_key_extractor(CanCbkKeyExtractor extractor);
-    void set_send_sleep(int us) { send_sleep_us_ = us; }
 };

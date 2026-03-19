@@ -1,10 +1,10 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>imu</name>
-  <version>0.0.0</version>
-  <description>imu package</description>
-  <maintainer email="root@todo.todo">RoboParty</maintainer>
+  <name>roboto_imu</name>
+  <version>1.0.0</version>
+  <description>roboto imu package</description>
+  <maintainer email="<2321901849@qq.com>">RoboParty</maintainer>
   <license>Apache License 2.0 </license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>

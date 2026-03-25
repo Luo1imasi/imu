@@ -5,19 +5,32 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 PACKAGE="roboto-imu"
-VERSION="1.0.0"
+VERSION="1.1.0"
 ARCH="$(dpkg --print-architecture)"
 PREFIX="/opt/roboparty"
 DEB_DIR="${PACKAGE}_${VERSION}_${ARCH}"
+WITH_ROS="${WITH_ROS:-0}"
 
-# Source ROS 2 if available (ament_cmake is optional)
-for distro in jazzy iron humble rolling; do
-    if [ -f "/opt/ros/${distro}/setup.bash" ]; then
-        echo ">>> Sourcing ROS 2 ${distro}"
-        source "/opt/ros/${distro}/setup.bash"
-        break
+# Optionally source ROS 2 for ament-based builds.
+# Default is deployment mode (WITH_ROS=0), which does not source ROS.
+if [ "$WITH_ROS" = "1" ]; then
+    ROS_SOURCED=0
+    for distro in jazzy iron humble rolling; do
+        if [ -f "/opt/ros/${distro}/setup.bash" ]; then
+            echo ">>> WITH_ROS=1, sourcing ROS 2 ${distro}"
+            source "/opt/ros/${distro}/setup.bash"
+            ROS_SOURCED=1
+            break
+        fi
+    done
+
+    if [ "$ROS_SOURCED" = "0" ]; then
+        echo "Error: WITH_ROS=1 but no ROS 2 setup.bash found under /opt/ros/."
+        exit 1
     fi
-done
+else
+    echo ">>> WITH_ROS=0, skip sourcing ROS environment"
+fi
 
 echo ">>> Starting compilation..."
 rm -rf build && mkdir -p build

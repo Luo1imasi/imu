@@ -40,8 +40,8 @@ endfunction()
 # Find all component libraries
 set(RobotoImu_LIBRARIES "")
 _add_imported_lib(imu)
-_add_imported_lib(imu_protocol)
 _add_imported_lib(hipnuc_imu)
+_add_imported_lib(imu_protocol)
 
 # Create the INTERFACE target
 add_library(roboto_imu::roboto_imu INTERFACE IMPORTED)

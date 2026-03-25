@@ -46,6 +46,11 @@ install(TARGETS imu hipnuc_imu imu_protocol
   RUNTIME DESTINATION bin
 )
 
+# Install our custom Config for non-ROS consumers (Deb mode)
+install(FILES cmake/roboto_imuConfig.cmake
+  DESTINATION lib/cmake/roboto_imu
+)
+
 pybind11_add_module(imu_py src/pybind_module.cpp)
 target_include_directories(imu_py
   PUBLIC

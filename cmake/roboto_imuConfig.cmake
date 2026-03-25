@@ -47,6 +47,10 @@ _add_imported_lib(hipnuc_imu)
 add_library(roboto_imu::roboto_imu INTERFACE IMPORTED)
 
 target_include_directories(roboto_imu::roboto_imu INTERFACE ${RobotoImu_INCLUDE_DIR})
-target_link_libraries(roboto_imu::roboto_imu INTERFACE ${RobotoImu_LIBRARIES})
+target_link_libraries(roboto_imu::roboto_imu INTERFACE 
+    ${RobotoImu_LIBRARIES}
+    fmt::fmt
+    spdlog::spdlog
+)
 
 message(STATUS "Found RobotoImu: ${_INSTALL_PREFIX}")

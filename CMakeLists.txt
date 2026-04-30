@@ -38,7 +38,6 @@ target_include_directories(imu
 target_link_libraries(imu PUBLIC ${PUBLIC_DEPENDENCIES} hipnuc_imu imu_protocol)
 
 install(DIRECTORY include/ DESTINATION include)
-install(DIRECTORY src/ DESTINATION include FILES_MATCHING PATTERN "*.h")
 
 install(TARGETS imu hipnuc_imu imu_protocol
   LIBRARY DESTINATION lib

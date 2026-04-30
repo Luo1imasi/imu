@@ -1,42 +1,59 @@
 #!/bin/bash
 
-# HiPNUC IMU (J1939) 波特率修改脚本
-# 默认将设备从 500k 修改为 1M
+# HiPNUC IMU (J1939) 配置修改脚本
+# 默认将设备从 500k 修改为 1M，开启四元数，关闭欧拉角
 
 CAN_IF="can4"
 
 echo "================================================="
-echo "  HiPNUC IMU 波特率配置脚本 (Target: 1Mbps)"
+echo "  HiPNUC IMU 配置修改脚本"
 echo "  当前使用接口: ${CAN_IF}"
 echo "================================================="
 
-# 检查系统是否安装了 can-utils
 if ! command -v cansend &> /dev/null; then
     echo "[错误] 未找到 'cansend' 命令。请先安装 can-utils。"
     echo "Ubuntu/Debian 运行: sudo apt-get install can-utils"
     exit 1
 fi
 
-echo "[1/3] 发送修改波特率为 1M 指令..."
-# 地址 009A, 写命令 06, 数据 0 = 1000K
-cansend ${CAN_IF} 0CEF0800#9A00060000000000
+echo "[1/4] 配置IMU参数..."
+
+cansend ${CAN_IF} 0CEF0808#4601060005000000
 if [ $? -ne 0 ]; then
     echo "[错误] CAN 报文发送失败，请检查 ${CAN_IF} 接口是否处于 UP 状态且波特率匹配当前 IMU。"
     exit 1
 fi
-# 给微控制器一点时间处理寄存器变更
 sleep 0.5 
 
-echo "[2/3] 发送保存配置指令..."
-# 地址 0000, 写命令 06, 数据 0 = 保存
-cansend ${CAN_IF} 0CEF0800#0000060000000000
-# 写入 Flash 通常比较慢，给足 1 秒钟防止中断
+cansend ${CAN_IF} 0CEF0808#4101060000000000
+if [ $? -ne 0 ]; then
+    echo "[错误] CAN 报文发送失败，请检查 ${CAN_IF} 接口是否处于 UP 状态且波特率匹配当前 IMU。"
+    exit 1
+fi
+sleep 0.5 
+
+cansend ${CAN_IF} 0CEF0808#3D01060000000000
+if [ $? -ne 0 ]; then
+    echo "[错误] CAN 报文发送失败，请检查 ${CAN_IF} 接口是否处于 UP 状态且波特率匹配当前 IMU。"
+    exit 1
+fi
+sleep 0.5 
+
+echo "[2/4] 发送修改波特率为 1M 指令..."
+
+cansend ${CAN_IF} 0CEF0808#9A00060000000000
+if [ $? -ne 0 ]; then
+    echo "[错误] CAN 报文发送失败，请检查 ${CAN_IF} 接口是否处于 UP 状态且波特率匹配当前 IMU。"
+    exit 1
+fi
+sleep 0.5 
+
+echo "[3/4] 发送保存配置指令..."
+cansend ${CAN_IF} 0CEF0808#0000060000000000
 sleep 1.0 
 
-echo "[3/3] 发送设备复位指令..."
-# 地址 0000, 写命令 06, 数据 FF = 复位
-cansend ${CAN_IF} 0CEF0800#00000600FF000000
-# 等待设备完成重启并重新初始化总线
+echo "[4/4] 发送设备复位指令..."
+cansend ${CAN_IF} 0CEF0808#00000600FF000000
 sleep 1.5 
 
 echo "================================================="
